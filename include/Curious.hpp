@@ -8,14 +8,10 @@ namespace tnt
     template <typename T>
     struct crtp
     {
-        constexpr crtp() noexcept
-            : super{static_cast<T &>(*this)} {}
+        constexpr crtp() noexcept = default;
 
         constexpr T &base() noexcept { return static_cast<T &>(*this); }
         constexpr T const &base() const noexcept { return static_cast<T const &>(*this); }
-
-    protected:
-        T &super;
     };
 } // namespace tnt
 
