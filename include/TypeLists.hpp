@@ -1,11 +1,10 @@
-#ifndef TNT_TYPE_LISTS_V2_HPP
-#define TNT_TYPE_LISTS_V2_HPP
+#ifndef TNT_TYPE_LISTS_HPP
+#define TNT_TYPE_LISTS_HPP
 
-// #include <utility>
+#include <utility>
 
 // TODO:
 // merge type_fn and value_fn using concepts (same for bind_*)
-
 
 // thx Oleg Fatkhiev
 // https://2019.cppconf-moscow.ru/en/talks/2zq0btoxldq6tmo3g7cvuo/
@@ -39,6 +38,12 @@ namespace tnt
         {
             return P<Ts...>::value;
         }
+
+        template <typename... Ts>
+        constexpr auto operator()(type_list<Ts...>) noexcept
+        {
+            return P<Ts...>::value;
+        }
     };
 
     template <template <typename...> typename P>
@@ -49,6 +54,12 @@ namespace tnt
     {
         template <typename... Ts>
         constexpr auto operator()(type_tag<Ts>...) noexcept
+        {
+            return P<Us..., Ts...>::value;
+        }
+
+        template <typename... Ts>
+        constexpr auto operator()(type_list<Ts...>) noexcept
         {
             return P<Us..., Ts...>::value;
         }
@@ -65,6 +76,12 @@ namespace tnt
         {
             return make_tag<typename P<Ts...>::type>;
         }
+
+        template <typename... Ts>
+        constexpr auto operator()(type_list<Ts...>) noexcept
+        {
+            return make_tag<typename P<Ts...>::type>;
+        }
     };
 
     template <template <typename...> typename P>
@@ -75,6 +92,12 @@ namespace tnt
     {
         template <typename... Ts>
         constexpr auto operator()(type_tag<Ts>...) noexcept
+        {
+            return make_tag<typename P<Us..., Ts...>::type>;
+        }
+
+        template <typename... Ts>
+        constexpr auto operator()(type_list<Ts...>) noexcept
         {
             return make_tag<typename P<Us..., Ts...>::type>;
         }
@@ -100,7 +123,7 @@ namespace tnt
     {
         // size/empty/contains
         template <typename... Ts>
-        constexpr unsigned size(type_list<Ts...>) noexcept { return sizeof...(Ts); }
+        constexpr std::size_t size(type_list<Ts...>) noexcept { return sizeof...(Ts); }
 
         template <typename... Ts>
         [[nodiscard]] constexpr bool empty(type_list<Ts...>) noexcept { return (sizeof...(Ts) == 0); }
@@ -119,10 +142,10 @@ namespace tnt
         constexpr type_tag<T> front(type_list<T, Ts...>) noexcept { return {}; }
 
         template <typename T, typename... Ts>
-        constexpr type_list<Ts...> back(type_list<T, Ts...>) noexcept { return tl::v2::back(make_list<Ts...>); }
+        constexpr auto back(type_list<T, Ts...>) noexcept { return tl::back(make_list<Ts...>); }
 
         template <typename T>
-        constexpr type_tag<T> back(type_list<T>) noexcept { return {}; }
+        constexpr type_tag<T> back(type_tag<T>) noexcept { return {}; }
 
         // push_front/push_back
         template <typename T, typename... Ts>
@@ -151,57 +174,72 @@ namespace tnt
         constexpr type_list<Ts...> pop_back(type_list<Ts..., Us...>, type_list<Us...>) noexcept { return {}; }
 
         // get/find/find_if
-        template <unsigned I, typename T, typename... Ts>
+        template <std::size_t I, typename T, typename... Ts>
         constexpr auto get(type_list<T, Ts...>) noexcept
         {
             static_assert(I < sizeof...(Ts) + 1);
             if constexpr (I > 0)
-                return tl::v2::get<I - 1>(make_list<Ts...>);
+                return tl::get<I - 1>(make_list<Ts...>);
             else
                 return make_tag<T>;
         }
 
-        template <typename T, typename... Ts>
-        constexpr unsigned find(type_list<Ts...>) noexcept
+        namespace detail
         {
-            return []<unsigned... S>(std::index_sequence<S...>) noexcept->unsigned
+            template <typename T, std::size_t S>
+            constexpr T min_elem(T (&arr)[S]) noexcept
             {
-                return std::min({[]<unsigned I>(std::integral_constant<unsigned, I>) noexcept -> unsigned {
-                    if constexpr (std::is_same_v<tl::v2::get<I>(make_list<Ts...>), T>)
+                auto m{arr[0]};
+                return [&arr, m ]<std::size_t... Si>(std::index_sequence<Si...>) mutable
+                {
+                    return ((m = std::min(m, arr[Si])), ...);
+                }
+                (std::make_index_sequence<S>{});
+            }
+        } // namespace detail
+
+        template <typename T, typename... Ts>
+        constexpr std::size_t find(type_list<Ts...>) noexcept
+        {
+            return []<std::size_t... S>(std::index_sequence<S...>) noexcept->std::size_t
+            {
+                constexpr std::size_t arr[]{[]<unsigned I>(std::integral_constant<unsigned, I>) noexcept -> unsigned {
+                    if constexpr (tl::get<I>(make_list<Ts...>) == make_tag<T>)
                         return I;
                     else
                         return sizeof...(Ts);
-                }(std::integral_constant<unsigned, S>{})...});
+                }(std::integral_constant<unsigned, S>{})...};
+                return detail::min_elem(arr);
             }
             (std::make_index_sequence<sizeof...(Ts)>{});
         }
 
         template <template <typename...> typename P, typename... Ts>
-        constexpr unsigned find_if(type_list<Ts...>) noexcept
+        constexpr std::size_t find_if(type_list<Ts...>) noexcept
         {
-            return []<unsigned... S>(std::index_sequence<S...>) noexcept->unsigned
+            return []<std::size_t... S>(std::index_sequence<S...>) noexcept->std::size_t
             {
-                return std::min({[]<unsigned I, typename T>(std::integral_constant<unsigned, I>, type_tag<T>) noexcept -> unsigned {
+                return std::min({[]<std::size_t I, typename T>(std::integral_constant<std::size_t, I>, type_tag<T>) noexcept -> std::size_t {
                     if constexpr (P<T>::value)
                         return I;
                     else
                         return sizeof...(Ts);
-                }(std::integral_constant<unsigned, S>{}, make_tag<Ts>)...});
+                }(std::integral_constant<std::size_t, S>{}, make_tag<Ts>)...});
             }
             (std::make_index_sequence<sizeof...(Ts)>{});
         }
 
         template <typename A, typename... Ts>
-        constexpr unsigned find_if(A, type_list<Ts...>) noexcept
+        constexpr std::size_t find_if(A, type_list<Ts...>) noexcept
         {
-            return []<unsigned... S>(std::index_sequence<S...>) noexcept->unsigned
+            return []<std::size_t... S>(std::index_sequence<S...>) noexcept->std::size_t
             {
-                return std::min({[]<unsigned I, typename T>(std::integral_constant<unsigned, I>, type_tag<T>) noexcept -> unsigned {
+                return std::min({[]<std::size_t I, typename T>(std::integral_constant<std::size_t, I>, type_tag<T>) noexcept -> std::size_t {
                     if constexpr (A{}(make_tag<Ts>))
                         return I;
                     else
                         return sizeof...(Ts);
-                }(std::integral_constant<unsigned, S>{}, make_tag<Ts>)...});
+                }(std::integral_constant<std::size_t, S>{}, make_tag<Ts>)...});
             }
             (std::make_index_sequence<sizeof...(Ts)>{});
         }
@@ -248,35 +286,35 @@ namespace tnt
         constexpr type_list<typename P<Ts>::type...> transform(type_list<Ts...>) noexcept { return {}; }
 
         template <typename P, typename... Ts>
-        constexpr type_list<decltype(P{}(make_tag<Ts>))...> transform(P, type_list<Ts...>) noexcept
+        constexpr auto transform(P, type_list<Ts...>) noexcept
         {
-            return make_list<decltype(P{}(make_tag<Ts>))...>;
+            return (empty_list{} | ... | P{}(make_tag<Ts>));
         }
 
         template <typename... Ts>
         constexpr auto reverse(type_list<Ts...>) noexcept
         {
-            return []<unsigned... S>(std::index_sequence<S...>)
+            return []<std::size_t... S>(std::index_sequence<S...>)
             {
-                return make_list<tl::v2::get<sizeof...(Ts) - S - 1>(make_list<Ts...>)...>;
+                return make_list<tl::get<sizeof...(Ts) - S - 1>(make_list<Ts...>)...>;
             }
             (std::make_index_sequence<sizeof...(Ts)>{});
         }
 
-        template <unsigned I, typename T>
+        template <std::size_t I, typename T>
         constexpr auto generate() noexcept
         {
-            return []<unsigned... S>(std::index_sequence<S...>)
+            return []<std::size_t... S>(std::index_sequence<S...>)
             {
                 return ((S, make_tag<T>) | ...);
             }
             (std::make_index_sequence<I>{});
         }
 
-        template <unsigned I, typename T>
+        template <std::size_t I, typename T>
         constexpr auto generate(type_tag<T>) noexcept
         {
-            return []<unsigned... S>(std::index_sequence<S...>)
+            return []<std::size_t... S>(std::index_sequence<S...>)
             {
                 return ((S, make_tag<T>) | ...);
             }
@@ -291,9 +329,9 @@ namespace tnt
                                            typename T>(F, type_tag<T>) noexcept
             {
                 if constexpr (F<T>::value)
-                    return make_tag<T>;
-                else
                     return empty_list{};
+                else
+                    return make_tag<T>;
             };
 
             return (empty_list{} | ... | filter_one(P{}, make_list<Ts>));
@@ -305,14 +343,14 @@ namespace tnt
             constexpr auto filter_one = []<typename F, typename T>(
                                             F, type_tag<T>) noexcept {
                 if constexpr (F{}(make_tag<T>))
-                    return make_tag<T>;
-                else
                     return empty_list{};
+                else
+                    return make_tag<T>;
             };
 
             return (empty_list{} | ... | filter_one(P{}, make_tag<Ts>));
         }
-    } // namespace tl::inline v2
+    } // namespace tl
 } // namespace tnt
 
-#endif //!TNT_TYPE_LISTS_V2_HPP
+#endif //!TNT_TYPE_LISTS_HPP

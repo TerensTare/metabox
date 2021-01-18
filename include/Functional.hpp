@@ -62,6 +62,21 @@ namespace tnt
         return static_cast<T &&>(t);
     }
 
+    namespace detail
+    {
+        template <typename T, typename... Args>
+        concept invocable = requires(T &t, Args &&...args)
+        {
+            t(forward<Args>(args)...);
+        };
+
+        template <typename T, typename... Args>
+        concept safe_invocable = requires(T &t, Args &&...args)
+        {
+            noexcept(t(forward<Args>(args)...));
+        };
+    } // namespace detail
+
     template <typename... Ts>
     struct overload final : Ts...
     {
@@ -82,9 +97,9 @@ namespace tnt
 
         template <typename... Args>
         // clang-format off
-            requires std::invocable<Fn, y_comb<Fn>&, Args...>
+            requires detail::invocable<Fn, y_comb<Fn>&, Args...>
         constexpr decltype(auto) operator()(Args &&... args) const
-            noexcept(std::is_nothrow_invocable_v<Fn, y_comb<Fn>&, Args...>)
+            noexcept(detail::safe_invocable<Fn, y_comb<Fn>&, Args...>)
         {
             // clang-format on
             return fn(*this, std::forward<Args>(args)...);
